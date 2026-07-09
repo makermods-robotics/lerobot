@@ -17,5 +17,6 @@
 from .config import TeleoperatorConfig
 from .teleoperator import Teleoperator
 from .utils import TeleopEvents, make_teleoperator_from_config
+from . import metal_leader  # noqa: F401  # registers MetalLeaderConfig for the CLI --teleop.type choices
 
 __all__ = ["Teleoperator", "TeleoperatorConfig", "TeleopEvents", "make_teleoperator_from_config"]
