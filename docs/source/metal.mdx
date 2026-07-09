@@ -1,0 +1,260 @@
+# Metal
+
+Metal is MakerMods' 7-DOF arm — 6 revolute joints plus a permanent (non-optional) gripper —
+built on Damiao QDD motors driven over classic CAN bus. The LeRobot integration is pure Python:
+no ROS, no vendor SDK, no compiled blobs. Gravity compensation for the leader arm is computed
+on the fly with [Pinocchio](https://github.com/stack-of-tasks/pinocchio) from a bundled URDF.
+
+## What's Unique?
+
+- **Pure Python, no ROS**: unlike the vendor stack, the LeRobot driver talks to the Damiao
+  motors directly over `python-can`. There is no ROS2 dependency and no compiled `.so` blob.
+- **Leader-follower teleop with gravity compensation**: the leader arm streams
+  Pinocchio-computed gravity-compensation torque on a background thread, so the arm feels
+  close to weightless while a human guides it. The follower runs standard MIT position control.
+- **Custom motor ranges**: Metal motors are flashed with MIT parameter ranges tailored to the
+  arm's joints, registered as three motor variants (`metal_jlo`, `metal_j2`, `metal_jhi`) rather
+  than reusing the stock Damiao tables.
+
+## Platform Requirements
+
+<Tip warning={true}>
+  **Linux Only**: Metal uses SocketCAN, which is Linux-specific. It has not been tested on macOS
+  or Windows.
+</Tip>
+
+## Install LeRobot 🤗
+
+Follow our [Installation Guide](./installation), then install the metal extra (pulls in
+`python-can` via the `damiao` extra, plus Pinocchio):
+
+```bash
+pip install -e ".[metal]"
+```
+
+Pinocchio is lazy-imported: importing `lerobot.robots.metal_follower` or
+`lerobot.teleoperators.metal_leader` does **not** import `pinocchio`. It is only imported when
+gravity compensation is actually needed (i.e. when the `MetalLeader` connects), so the follower
+and any code that only touches the follower never pays the Pinocchio import cost.
+
+## Hardware / CAN Setup
+
+Metal uses two CAN buses — the follower lives on `can0`, the leader on `can1` — both running
+classic CAN (not CAN FD) at 1 Mbps.
+
+Bring the interfaces up:
+
+```bash
+sudo ip link set can0 up type can bitrate 1000000
+sudo ip link set can1 up type can bitrate 1000000
+```
+
+For general CAN adapter setup (drivers, `slcan` vs `socketcan`, troubleshooting), see the
+[Damiao Motors and CAN Bus guide](./damiao).
+
+## Motor Configuration
+
+Each joint is a Damiao motor flashed with one of three custom MIT ranges registered for Metal
+(`metal_jlo`, `metal_j2`, `metal_jhi`), not the stock Damiao motor-type tables. Send/recv CAN
+IDs run `0x01..0x07` / `0x11..0x17`:
+
+| Joint    | Motor Type | Send ID | Recv ID |
+| -------- | ---------- | ------- | ------- |
+| joint1   | metal_jlo  | 0x01    | 0x11    |
+| joint2   | metal_j2   | 0x02    | 0x12    |
+| joint3   | metal_jlo  | 0x03    | 0x13    |
+| joint4   | metal_jlo  | 0x04    | 0x14    |
+| joint5   | metal_jhi  | 0x05    | 0x15    |
+| joint6   | metal_jhi  | 0x06    | 0x16    |
+| gripper  | metal_jhi  | 0x07    | 0x17    |
+
+The gripper is not optional — both the follower and leader always expose all 7 motors.
+
+## Gravity Compensation
+
+The leader's gravity-compensation torque is computed by Pinocchio from the URDF bundled with
+the driver (`src/lerobot/motors/metal/urdf/`), evaluated on a background thread at
+`gravity_hz` (default 200 Hz) and streamed to the motors as MIT feed-forward torque, with
+`kp=0` so the arm stays freely backdrivable and `kd` (`leader_kd`, default `0.3`) supplying
+damping/feel.
+
+The Pinocchio model was cross-checked against the vendor's own KDL-based gravity computation
+and agrees to within ~1e-11 N·m across the sampled configurations — see
+`docs/metal/gravity_validation/` for the validation harness (`kdl_oracle.cpp` + `validate.py`).
+
+## Usage
+
+### Follower Arm (Robot)
+
+<hfoptions id="follower">
+<hfoption id="Command">
+
+```bash
+lerobot-calibrate \
+    --robot.type=metal_follower \
+    --robot.port=can0 \
+    --robot.id=my_metal_follower
+```
+
+</hfoption>
+<hfoption id="API example">
+
+```python
+from lerobot.robots.metal_follower import MetalFollower, MetalFollowerConfig
+
+config = MetalFollowerConfig(
+    port="can0",
+    id="my_metal_follower",
+)
+
+follower = MetalFollower(config)
+follower.connect()
+
+# Read current state
+obs = follower.get_observation()
+print(obs)
+
+# Send action (position in degrees; gripper in raw motor degrees)
+action = {
+    "joint1.pos": 0.0,
+    "joint2.pos": -90.0,
+    "joint3.pos": 90.0,
+    "joint4.pos": 0.0,
+    "joint5.pos": 0.0,
+    "joint6.pos": 0.0,
+    "gripper.pos": 0.0,
+}
+follower.send_action(action)
+
+follower.disconnect()
+```
+
+</hfoption>
+</hfoptions>
+
+### Leader Arm (Teleoperator)
+
+The leader arm is used for teleoperation — a human moves it, gravity-compensated, to control
+the follower arm.
+
+<hfoptions id="leader">
+<hfoption id="Command">
+
+```bash
+lerobot-calibrate \
+    --teleop.type=metal_leader \
+    --teleop.port=can1 \
+    --teleop.id=my_metal_leader
+```
+
+</hfoption>
+<hfoption id="API example">
+
+```python
+from lerobot.teleoperators.metal_leader import MetalLeader, MetalLeaderConfig
+
+config = MetalLeaderConfig(
+    port="can1",
+    id="my_metal_leader",
+)
+
+leader = MetalLeader(config)
+leader.connect()
+
+# Read current position (as action to send to follower)
+action = leader.get_action()
+print(action)
+
+leader.disconnect()
+```
+
+</hfoption>
+</hfoptions>
+
+### Teleoperation
+
+To teleoperate Metal with leader-follower control:
+
+```bash
+lerobot-teleoperate \
+    --robot.type=metal_follower \
+    --robot.port=can0 \
+    --teleop.type=metal_leader \
+    --teleop.port=can1
+```
+
+### Recording Data
+
+To record a dataset during teleoperation:
+
+```bash
+lerobot-record \
+    --robot.type=metal_follower \
+    --robot.port=can0 \
+    --robot.id=my_follower \
+    --teleop.type=metal_leader \
+    --teleop.port=can1 \
+    --teleop.id=my_leader \
+    --repo-id=my_hf_username/my_metal_dataset \
+    --fps=30 \
+    --num-episodes=10
+```
+
+## Configuration Options
+
+### Follower Configuration
+
+| Parameter                       | Default        | Description                                                  |
+| -------------------------------- | -------------- | -------------------------------------------------------------- |
+| `port`                           | `"can0"`       | CAN interface                                                  |
+| `can_interface`                  | `"socketcan"`  | `"socketcan"`, `"slcan"`, or `"auto"`                           |
+| `can_bitrate`                    | `1000000`      | Classic CAN bitrate (1 Mbps); Metal does not use CAN FD         |
+| `use_can_fd`                     | `False`        | Always `False` for Metal                                       |
+| `urdf_path`                      | `""`           | Overrides the bundled `metal_with_gripper.urdf` if set          |
+| `max_relative_target`            | `None`         | Safety limit for relative target positions                     |
+| `disable_torque_on_disconnect`   | `False`        | Whether to disable torque when disconnecting                   |
+
+### Leader Configuration
+
+| Parameter        | Default   | Description                                                        |
+| ----------------- | --------- | ---------------------------------------------------------------------- |
+| `port`            | `"can1"`  | CAN interface (leader lives on the second bus)                         |
+| `can_interface`   | `"socketcan"` | `"socketcan"`, `"slcan"`, or `"auto"`                               |
+| `can_bitrate`     | `1000000` | Classic CAN bitrate (1 Mbps)                                            |
+| `urdf_path`       | `""`      | Overrides the bundled `metal_with_gripper.urdf` if set                  |
+| `gravity_hz`      | `200`     | Background gravity-compensation thread rate                            |
+| `leader_kd`       | `0.3`     | MIT damping gain while gravity-compensated (`kp` is always 0)           |
+
+## Status Notes
+
+- **Follower gains use bus defaults.** Position `kp`/`kd` are not yet tuned per-joint for the
+  Metal arm; expect to tune them on hardware for your specific build.
+- **Gripper is raw motor degrees today.** `gripper.pos` is passed through in raw motor degrees,
+  not normalized to physical stroke. A stroke-to-angle lookup table
+  (`src/lerobot/motors/metal/gripper.py`, ported from the vendor SDK) is available for a future
+  normalization pass but is not yet wired into the follower/leader observation-action pipeline.
+- **Leader handle mass is not modeled.** The gravity-compensation model does not yet account for
+  the extra mass of the leader's handle attachment. If the arm sags or drifts with the handle
+  attached, this is the first place to look.
+
+## Troubleshooting
+
+### No Response from Motors
+
+1. Check power supply connections
+2. Verify CAN wiring (CAN-H, CAN-L, GND)
+3. Run diagnostics: `lerobot-setup-can --mode=test --interfaces=can0,can1`
+4. See the [Damiao troubleshooting guide](./damiao#troubleshooting) for more details
+
+### CAN Interface Not Found
+
+Ensure the CAN interfaces are configured:
+
+```bash
+ip link show can0
+ip link show can1
+```
+
+## Resources
+
+- [Damiao Motors and CAN Bus](./damiao)
