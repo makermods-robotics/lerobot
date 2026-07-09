@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ..config import TeleoperatorConfig
 
@@ -50,14 +50,28 @@ class MetalLeaderConfig(TeleoperatorConfig):
     # Background gravity-compensation thread rate (Hz).
     gravity_hz: int = 200
 
-    # MIT damping gain applied while the leader is gravity-compensated (kp is always 0, so the
-    # human can freely position the arm; kd supplies velocity damping / feel). kd is also the
-    # brake against friction-feedforward runaway — don't drive it to 0 while raising friction_scale.
-    leader_kd: float = 0.01
+    # MIT damping gain while gravity-compensated (kp is always 0 so the human can freely position
+    # the arm; kd supplies velocity damping / feel). kd is also the brake against friction-
+    # feedforward runaway — don't drive it to 0 while raising friction_scale unless you have tested
+    # stability at your control rate. Accepts a single float (all joints) or a per-joint dict
+    # {motor_name: kd}; motors absent from the dict get 0. The vendor uses kd=0 (uniform) + full
+    # friction feedforward; its per-joint feel comes from the per-joint viscous coefficients.
+    leader_kd: float | dict[str, float] = 0.0
 
     # Friction/coriolis feedforward: fed the measured joint velocity to cancel the arm's own
-    # gearbox friction so the leader feels transparent (lighter to move). 0 = pure gravity only.
-    # Higher = lighter, but too high a joint can RUN AWAY (self-accelerate). Tuned on hardware.
+    # gearbox friction so the leader feels transparent (lighter to move). Accepts a single float
+    # (all joints) or a per-joint dict {motor_name: scale}. 0 = gravity only. Higher = lighter, but
+    # too high a joint RUNS AWAY. Per-joint because this arm's real friction differs per joint from
+    # the vendor's viscous coefficients (tuned on hardware; the vendor's uniform 1.0 did not fit).
     use_velocity_feedforward: bool = True
-    friction_scale: float = 0.45
+    friction_scale: float | dict[str, float] = field(
+        default_factory=lambda: {
+            "joint1": 1.3,
+            "joint2": 2.5,
+            "joint3": 1.1,
+            "joint4": 1.0,
+            "joint5": 0.8,
+            "joint6": 0.8,
+        }
+    )
     velocity_deadzone_rad_s: float = 0.05

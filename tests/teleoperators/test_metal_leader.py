@@ -110,6 +110,35 @@ def test_friction_disabled_skips_velocity_pass(leader):
     assert leader._gravity.feedforward_torque.call_count == 1  # gravity only, no velocity pass
 
 
+def test_leader_kd_per_joint_dict():
+    t = MetalLeader(MetalLeaderConfig(port="can1", leader_kd={"joint1": 0.5, "joint2": 0.2}))
+    t.bus = MagicMock()
+    t.bus.sync_read_all_states.return_value = {
+        m: {"position": 0.0, "velocity": 0.0, "torque": 0.0} for m in t._joint_motor_names
+    }
+    t._gravity = MagicMock()
+    t._gravity.feedforward_torque.return_value = [0.0] * 6
+    t._gravity_tick()
+    (cmds,), _ = t.bus.sync_write_mit.call_args
+    assert cmds["joint1"][1] == 0.5
+    assert cmds["joint2"][1] == 0.2
+    assert cmds["joint3"][1] == 0.0  # absent from dict -> 0
+
+
+def test_friction_scale_per_joint_dict():
+    t = MetalLeader(MetalLeaderConfig(port="can1", leader_kd=0.0, friction_scale={"joint1": 2.0}))
+    t.bus = MagicMock()
+    t.bus.sync_read_all_states.return_value = {
+        m: {"position": 0.0, "velocity": 30.0, "torque": 0.0} for m in t._joint_motor_names
+    }
+    t._gravity = MagicMock()
+    t._gravity.feedforward_torque.side_effect = [[1.0] * 6, [2.0] * 6]  # gravity, then full
+    t._gravity_tick()
+    (cmds,), _ = t.bus.sync_write_mit.call_args
+    assert cmds["joint1"][4] == pytest.approx(3.0)  # 1.0 + 2.0*(2.0-1.0)
+    assert cmds["joint2"][4] == pytest.approx(1.0)  # absent -> scale 0 -> gravity only
+
+
 def test_factory_builds_metal_leader():
     from lerobot.teleoperators.utils import make_teleoperator_from_config
     from lerobot.teleoperators.metal_leader.config_metal_leader import MetalLeaderConfig

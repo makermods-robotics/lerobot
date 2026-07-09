@@ -164,25 +164,39 @@ class MetalLeader(Teleoperator):
                 present = {m: states[m]["position"] for m in self._joint_motor_names}
                 q_rad = [radians(states[m]["position"]) for m in METAL_JOINT_NAMES]
                 tau = self._gravity.feedforward_torque(q_rad, [0.0] * len(METAL_JOINT_NAMES))
-                if self.config.use_velocity_feedforward and self.config.friction_scale > 0.0:
-                    # Feed measured velocity to activate friction/coriolis comp, scaled so the arm
-                    # feels transparent without running away. Deadzone rejects encoder noise at rest.
+                # Resolve friction scale per joint (float -> all; dict -> per-joint, missing -> 0).
+                fs_cfg = self.config.friction_scale
+                if isinstance(fs_cfg, dict):
+                    scales = [float(fs_cfg.get(m, 0.0)) for m in METAL_JOINT_NAMES]
+                else:
+                    scales = [float(fs_cfg)] * len(METAL_JOINT_NAMES)
+                if self.config.use_velocity_feedforward and any(s > 0.0 for s in scales):
+                    # Feed measured velocity to activate friction/coriolis comp, scaled per joint so
+                    # the arm feels transparent without running away. Deadzone rejects noise at rest.
                     dz = self.config.velocity_deadzone_rad_s
                     dq_rad = []
                     for m in METAL_JOINT_NAMES:
                         v = radians(states[m]["velocity"])
                         dq_rad.append(0.0 if abs(v) < dz else v)
                     tau_full = self._gravity.feedforward_torque(q_rad, dq_rad)
-                    scale = self.config.friction_scale
-                    tau = [tau[i] + scale * (tau_full[i] - tau[i]) for i in range(len(tau))]
+                    tau = [tau[i] + scales[i] * (tau_full[i] - tau[i]) for i in range(len(tau))]
+
+                # Resolve kd per motor (float -> all joints; dict -> per-joint, missing -> 0).
+                kd_cfg = self.config.leader_kd
+                if isinstance(kd_cfg, dict):
+                    def kd_of(m):
+                        return float(kd_cfg.get(m, 0.0))
+                else:
+                    def kd_of(m):
+                        return float(kd_cfg)
 
                 commands: dict[str, tuple[float, float, float, float, float]] = {}
                 for i, motor in enumerate(METAL_JOINT_NAMES):
-                    commands[motor] = (0.0, self.config.leader_kd, present[motor], 0.0, tau[i])
+                    commands[motor] = (0.0, kd_of(motor), present[motor], 0.0, tau[i])
                 # Gripper: backdrivable, no gravity torque, so the human can squeeze it freely.
                 commands[METAL_GRIPPER_NAME] = (
                     0.0,
-                    self.config.leader_kd,
+                    kd_of(METAL_GRIPPER_NAME),
                     present[METAL_GRIPPER_NAME],
                     0.0,
                     0.0,
