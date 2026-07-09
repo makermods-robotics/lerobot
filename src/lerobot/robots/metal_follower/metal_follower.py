@@ -81,6 +81,9 @@ class MetalFollower(Robot):
 
         self.cameras = make_cameras_from_configs(config.cameras)
 
+        # False until the follower has caught up to the leader (slow initial sync), then full speed.
+        self._synced = False
+
     @property
     def _motors_ft(self) -> dict[str, type]:
         return {f"{motor}.pos": float for motor in self._joint_motor_names}
@@ -113,6 +116,7 @@ class MetalFollower(Robot):
             cam.connect()
 
         self.bus.enable_torque()
+        self._synced = False  # re-arm the slow initial sync on every connect
 
         # Set firm follow gains (bus default kp=10 is far too soft to hold the arm against
         # gravity → the follower sags). Uses vendor follow_mit_kp/kd unless overridden.
@@ -170,6 +174,20 @@ class MetalFollower(Robot):
                 if clipped_position != position:
                     logger.debug(f"Clipped {motor_name} from {position:.2f}° to {clipped_position:.2f}°")
                 goal_pos[motor_name] = clipped_position
+
+        # Slow initial sync: at teleop start cap each joint's per-step motion until the follower
+        # has caught up to the leader, so firm follow gains don't snap it across a large gap.
+        if self.config.startup_sync_speed_deg is not None and not self._synced:
+            present_pos = self.bus.sync_read("Present_Position")
+            step = self.config.startup_sync_speed_deg
+            max_err = 0.0
+            for motor_name, position in goal_pos.items():
+                err = position - present_pos[motor_name]
+                max_err = max(max_err, abs(err))
+                goal_pos[motor_name] = present_pos[motor_name] + max(-step, min(step, err))
+            if max_err <= self.config.startup_sync_tolerance_deg:
+                self._synced = True
+                logger.info(f"{self} synced to leader; tracking at full speed.")
 
         # Cap goal position when too far away from present position.
         if self.config.max_relative_target is not None:

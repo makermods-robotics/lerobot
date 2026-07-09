@@ -24,7 +24,9 @@ from lerobot.robots.metal_follower.metal_follower import MetalFollower
 
 @pytest.fixture
 def follower():
-    r = MetalFollower(MetalFollowerConfig(port="can0"))
+    # startup slow-sync off so these tests exercise soft limits / gains directly (a dedicated
+    # test covers the sync behaviour).
+    r = MetalFollower(MetalFollowerConfig(port="can0", startup_sync_speed_deg=None))
     r.bus = MagicMock()
     r.bus.sync_read.return_value = {m: 0.0 for m in r._joint_motor_names}
     return r
@@ -61,6 +63,18 @@ def test_factory_builds_metal_follower():
     r = make_robot_from_config(MetalFollowerConfig(port="can0"))
     assert r.name == "metal_follower"
     assert type(r).__name__ == "MetalFollower"
+
+
+def test_startup_slow_sync_clamps_then_syncs():
+    r = MetalFollower(MetalFollowerConfig(port="can0", startup_sync_speed_deg=3.0, startup_sync_tolerance_deg=3.0))
+    r.bus = MagicMock()
+    r.bus.sync_read.return_value = {"joint1": 0.0}
+    out = r.send_action({"joint1.pos": 50.0})
+    assert out["joint1.pos"] == 3.0  # clamped to +3 deg/step from present 0
+    assert r._synced is False
+    r.bus.sync_read.return_value = {"joint1": 48.0}
+    r.send_action({"joint1.pos": 50.0})  # err 2 <= tolerance 3 -> synced
+    assert r._synced is True
 
 
 def test_connect_sets_follow_gains(follower):

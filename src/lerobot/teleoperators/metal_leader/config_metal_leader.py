@@ -79,3 +79,9 @@ class MetalLeaderConfig(TeleoperatorConfig):
     # Scales the gripper friction feedforward (vendor GripperTorqueCompensation) so the leader
     # gripper is easy to squeeze. 0 disables it (gripper left at torque=0). Tune on hardware.
     gripper_friction_scale: float = 1.0
+
+    # On disconnect (teleop end), stop gravity compensation and hold the current pose with these
+    # MIT gains so the arm freezes in place (stays up, no longer weightless) instead of drifting.
+    # Set hold_kp_on_disconnect=0 to leave the arm limp/backdrivable instead.
+    hold_kp_on_disconnect: float = 50.0
+    hold_kd_on_disconnect: float = 1.0

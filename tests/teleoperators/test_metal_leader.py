@@ -147,6 +147,17 @@ def test_friction_scale_per_joint_dict():
     assert cmds["joint2"][4] == pytest.approx(1.0)  # absent -> scale 0 -> gravity only
 
 
+def test_disconnect_holds_pose(leader):
+    leader.bus.is_connected = True  # so @check_if_not_connected passes
+    leader._gravity_thread = None  # nothing to join
+    leader.bus.sync_read.return_value = {m: 10.0 for m in leader._joint_motor_names}
+    leader.disconnect()
+    (cmds,), _ = leader.bus.sync_write_mit.call_args
+    kp, kd, pos, vel, tau = cmds["joint1"]
+    assert kp == 50.0 and pos == 10.0  # position hold with kp>0 (gravity comp stopped)
+    leader.bus.disconnect.assert_called_with(disable_torque=False)
+
+
 def test_factory_builds_metal_leader():
     from lerobot.teleoperators.utils import make_teleoperator_from_config
     from lerobot.teleoperators.metal_leader.config_metal_leader import MetalLeaderConfig

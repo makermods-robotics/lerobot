@@ -52,6 +52,12 @@ class MetalFollowerConfig(RobotConfig):
     # Set at connect(); the bus default (kp=10) is too soft to hold the arm against gravity.
     gains: dict[str, tuple[float, float]] | None = None
 
+    # Slow initial synchronization: at teleop start the follower can be far from the leader, and
+    # firm follow gains would snap it there hard. Until it has caught up, cap each joint's per-step
+    # motion to this many degrees (gentle alignment), then track at full speed. None disables it.
+    startup_sync_speed_deg: float | None = 3.0
+    startup_sync_tolerance_deg: float = 3.0
+
     # Safety limit for relative target positions (degrees). None disables the check.
     max_relative_target: float | dict[str, float] | None = None
 

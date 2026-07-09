@@ -244,7 +244,22 @@ class MetalLeader(Teleoperator):
                 )
             self._gravity_thread = None
 
-        # Keep torque enabled so the arm holds its last commanded position instead of free-falling.
+        # Gravity comp has stopped. Freeze the arm in place with a position hold (kp>0) so it stays
+        # up (no longer weightless) instead of drifting on the last zero-kp command. hold_kp=0 leaves
+        # it limp/backdrivable. Note: the hold persists per the motors' command-timeout setting.
+        if self.config.hold_kp_on_disconnect > 0.0:
+            try:
+                with self._bus_lock:
+                    present = self.bus.sync_read("Present_Position")
+                    kp = self.config.hold_kp_on_disconnect
+                    kd = self.config.hold_kd_on_disconnect
+                    self.bus.sync_write_mit(
+                        {m: (kp, kd, present[m], 0.0, 0.0) for m in self._joint_motor_names}
+                    )
+            except Exception:
+                logger.exception(f"{self}: failed to command hold pose on disconnect.")
+
+        # Keep torque enabled so the hold persists instead of the arm free-falling.
         self.bus.disconnect(disable_torque=False)
 
         logger.info(f"{self} disconnected.")
