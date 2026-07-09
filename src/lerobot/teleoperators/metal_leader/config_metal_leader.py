@@ -66,12 +66,12 @@ class MetalLeaderConfig(TeleoperatorConfig):
     use_velocity_feedforward: bool = True
     friction_scale: float | dict[str, float] = field(
         default_factory=lambda: {
-            "joint1": 1.3,
-            "joint2": 2.5,
+            "joint1": 1.4,
+            "joint2": 3.3,
             "joint3": 1.1,
-            "joint4": 1.0,
-            "joint5": 0.8,
-            "joint6": 0.8,
+            "joint4": 0.7,
+            "joint5": 0.3,
+            "joint6": 0.7,
         }
     )
     velocity_deadzone_rad_s: float = 0.05
