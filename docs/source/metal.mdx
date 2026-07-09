@@ -79,7 +79,8 @@ the driver (`src/lerobot/motors/metal/urdf/`), evaluated on a background thread 
 damping/feel.
 
 The Pinocchio model was cross-checked against the vendor's own KDL-based gravity computation
-and agrees to within ~1e-11 N·m across the sampled configurations — see
+and agrees to machine precision (max ~5e-11 N·m, mean ~1e-12 N·m, vs signals up to ~14 N·m)
+across the sampled configurations — see
 `docs/metal/gravity_validation/` for the validation harness (`kdl_oracle.cpp` + `validate.py`).
 
 ## Usage
