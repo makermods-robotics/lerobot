@@ -160,9 +160,21 @@ class MetalLeader(Teleoperator):
         """
         try:
             with self._bus_lock:
-                present = self.bus.sync_read("Present_Position")
-                q_rad = [radians(present[m]) for m in METAL_JOINT_NAMES]
+                states = self.bus.sync_read_all_states()  # position (deg), velocity (deg/s), torque
+                present = {m: states[m]["position"] for m in self._joint_motor_names}
+                q_rad = [radians(states[m]["position"]) for m in METAL_JOINT_NAMES]
                 tau = self._gravity.feedforward_torque(q_rad, [0.0] * len(METAL_JOINT_NAMES))
+                if self.config.use_velocity_feedforward and self.config.friction_scale > 0.0:
+                    # Feed measured velocity to activate friction/coriolis comp, scaled so the arm
+                    # feels transparent without running away. Deadzone rejects encoder noise at rest.
+                    dz = self.config.velocity_deadzone_rad_s
+                    dq_rad = []
+                    for m in METAL_JOINT_NAMES:
+                        v = radians(states[m]["velocity"])
+                        dq_rad.append(0.0 if abs(v) < dz else v)
+                    tau_full = self._gravity.feedforward_torque(q_rad, dq_rad)
+                    scale = self.config.friction_scale
+                    tau = [tau[i] + scale * (tau_full[i] - tau[i]) for i in range(len(tau))]
 
                 commands: dict[str, tuple[float, float, float, float, float]] = {}
                 for i, motor in enumerate(METAL_JOINT_NAMES):

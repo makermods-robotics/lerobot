@@ -51,5 +51,13 @@ class MetalLeaderConfig(TeleoperatorConfig):
     gravity_hz: int = 200
 
     # MIT damping gain applied while the leader is gravity-compensated (kp is always 0, so the
-    # human can freely position the arm; kd supplies velocity damping / feel).
-    leader_kd: float = 0.3
+    # human can freely position the arm; kd supplies velocity damping / feel). kd is also the
+    # brake against friction-feedforward runaway — don't drive it to 0 while raising friction_scale.
+    leader_kd: float = 0.01
+
+    # Friction/coriolis feedforward: fed the measured joint velocity to cancel the arm's own
+    # gearbox friction so the leader feels transparent (lighter to move). 0 = pure gravity only.
+    # Higher = lighter, but too high a joint can RUN AWAY (self-accelerate). Tuned on hardware.
+    use_velocity_feedforward: bool = True
+    friction_scale: float = 0.45
+    velocity_deadzone_rad_s: float = 0.05

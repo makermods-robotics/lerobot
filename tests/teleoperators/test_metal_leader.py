@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
 from unittest.mock import MagicMock
 
 import pytest
@@ -27,6 +28,9 @@ def leader():
     t = MetalLeader(MetalLeaderConfig(port="can1", gravity_hz=200))
     t.bus = MagicMock()
     t.bus.sync_read.return_value = {m: 0.0 for m in t._joint_motor_names}
+    t.bus.sync_read_all_states.return_value = {
+        m: {"position": 0.0, "velocity": 0.0, "torque": 0.0} for m in t._joint_motor_names
+    }
     t._gravity = MagicMock()
     t._gravity.feedforward_torque.return_value = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
     return t
@@ -63,22 +67,47 @@ def test_get_action_and_gravity_tick_hold_bus_lock_during_bus_access(leader):
         observed_locked_during_read.append(leader._bus_lock.locked())
         return {m: 0.0 for m in leader._joint_motor_names}
 
+    def fake_sync_read_all_states(*args, **kwargs):
+        observed_locked_during_read.append(leader._bus_lock.locked())
+        return {m: {"position": 0.0, "velocity": 0.0, "torque": 0.0} for m in leader._joint_motor_names}
+
     def fake_sync_write_mit(*args, **kwargs):
         observed_locked_during_write.append(leader._bus_lock.locked())
 
     leader.bus.sync_read.side_effect = fake_sync_read
+    leader.bus.sync_read_all_states.side_effect = fake_sync_read_all_states
     leader.bus.sync_write_mit.side_effect = fake_sync_write_mit
 
-    leader.get_action()
+    leader.get_action()  # uses sync_read
     assert observed_locked_during_read == [True]
 
     observed_locked_during_read.clear()
-    leader._gravity_tick()
+    leader._gravity_tick()  # uses sync_read_all_states
     assert observed_locked_during_read == [True]
     assert observed_locked_during_write == [True]
 
     # The lock must be released again after each call completes.
     assert not leader._bus_lock.locked()
+
+
+def test_friction_feedforward_uses_measured_velocity(leader):
+    leader.bus.sync_read_all_states.return_value = {
+        m: {"position": 0.0, "velocity": 30.0, "torque": 0.0} for m in leader._joint_motor_names
+    }  # 30 deg/s, above the deadzone
+    leader.config.friction_scale = 0.5
+    leader._gravity_tick()
+    calls = leader._gravity.feedforward_torque.call_args_list
+    assert len(calls) == 2  # gravity-only pass, then a velocity pass for friction/coriolis
+    (_, dq_grav), _ = calls[0]
+    (_, dq_fric), _ = calls[1]
+    assert dq_grav == [0.0] * 6
+    assert dq_fric[0] == pytest.approx(math.radians(30.0))  # deg/s -> rad/s
+
+
+def test_friction_disabled_skips_velocity_pass(leader):
+    leader.config.friction_scale = 0.0
+    leader._gravity_tick()
+    assert leader._gravity.feedforward_torque.call_count == 1  # gravity only, no velocity pass
 
 
 def test_factory_builds_metal_leader():
