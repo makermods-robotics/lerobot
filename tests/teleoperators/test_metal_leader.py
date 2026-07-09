@@ -48,3 +48,34 @@ def test_gravity_tick_sends_mit_zero_kp_and_gravity_torque(leader):
     assert kp == 0.0 and tau == 0.1
     gkp, gkd, gpos, gvel, gtau = cmds["gripper"]
     assert gkp == 0.0 and gtau == 0.0  # gripper backdrivable, no gravity torque
+
+
+def test_get_action_and_gravity_tick_hold_bus_lock_during_bus_access(leader):
+    """DamiaoMotorsBus has no internal locking, so MetalLeader must serialize all bus access
+    (get_action vs. the background _gravity_tick) behind leader._bus_lock. Assert the lock is
+    actually held while the mocked bus methods are invoked, not just that a lock attribute
+    exists.
+    """
+    observed_locked_during_read = []
+    observed_locked_during_write = []
+
+    def fake_sync_read(*args, **kwargs):
+        observed_locked_during_read.append(leader._bus_lock.locked())
+        return {m: 0.0 for m in leader._joint_motor_names}
+
+    def fake_sync_write_mit(*args, **kwargs):
+        observed_locked_during_write.append(leader._bus_lock.locked())
+
+    leader.bus.sync_read.side_effect = fake_sync_read
+    leader.bus.sync_write_mit.side_effect = fake_sync_write_mit
+
+    leader.get_action()
+    assert observed_locked_during_read == [True]
+
+    observed_locked_during_read.clear()
+    leader._gravity_tick()
+    assert observed_locked_during_read == [True]
+    assert observed_locked_during_write == [True]
+
+    # The lock must be released again after each call completes.
+    assert not leader._bus_lock.locked()

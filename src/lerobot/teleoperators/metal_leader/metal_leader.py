@@ -88,6 +88,12 @@ class MetalLeader(Teleoperator):
         self._gravity_thread: threading.Thread | None = None
         self._gravity_stop_event = threading.Event()
 
+        # DamiaoMotorsBus has no internal locking: both the background gravity-compensation
+        # thread (_gravity_tick) and the main-loop get_action() send a CAN request then poll the
+        # shared canbus.recv() and mutate a shared state cache. All bus access from this
+        # teleoperator must be serialized behind this lock to avoid racing on the CAN socket.
+        self._bus_lock = threading.Lock()
+
     @property
     def action_features(self) -> dict[str, type]:
         return {f"{motor}.pos": float for motor in self._joint_motor_names}
@@ -147,23 +153,24 @@ class MetalLeader(Teleoperator):
         the background thread.
         """
         try:
-            present = self.bus.sync_read("Present_Position")
-            q_rad = [radians(present[m]) for m in METAL_JOINT_NAMES]
-            tau = self._gravity.feedforward_torque(q_rad, [0.0] * len(METAL_JOINT_NAMES))
+            with self._bus_lock:
+                present = self.bus.sync_read("Present_Position")
+                q_rad = [radians(present[m]) for m in METAL_JOINT_NAMES]
+                tau = self._gravity.feedforward_torque(q_rad, [0.0] * len(METAL_JOINT_NAMES))
 
-            commands: dict[str, tuple[float, float, float, float, float]] = {}
-            for i, motor in enumerate(METAL_JOINT_NAMES):
-                commands[motor] = (0.0, self.config.leader_kd, present[motor], 0.0, tau[i])
-            # Gripper: backdrivable, no gravity torque, so the human can squeeze it freely.
-            commands[METAL_GRIPPER_NAME] = (
-                0.0,
-                self.config.leader_kd,
-                present[METAL_GRIPPER_NAME],
-                0.0,
-                0.0,
-            )
+                commands: dict[str, tuple[float, float, float, float, float]] = {}
+                for i, motor in enumerate(METAL_JOINT_NAMES):
+                    commands[motor] = (0.0, self.config.leader_kd, present[motor], 0.0, tau[i])
+                # Gripper: backdrivable, no gravity torque, so the human can squeeze it freely.
+                commands[METAL_GRIPPER_NAME] = (
+                    0.0,
+                    self.config.leader_kd,
+                    present[METAL_GRIPPER_NAME],
+                    0.0,
+                    0.0,
+                )
 
-            self.bus.sync_write_mit(commands)
+                self.bus.sync_write_mit(commands)
         except Exception:
             logger.exception("Gravity-compensation tick failed; continuing.")
 
@@ -176,7 +183,8 @@ class MetalLeader(Teleoperator):
         """
         start = time.perf_counter()
 
-        positions = self.bus.sync_read("Present_Position")
+        with self._bus_lock:
+            positions = self.bus.sync_read("Present_Position")
         action_dict: dict[str, Any] = {f"{motor}.pos": positions[motor] for motor in self._joint_motor_names}
 
         dt_ms = (time.perf_counter() - start) * 1e3
@@ -192,6 +200,11 @@ class MetalLeader(Teleoperator):
         self._gravity_stop_event.set()
         if self._gravity_thread is not None:
             self._gravity_thread.join(timeout=1.0)
+            if self._gravity_thread.is_alive():
+                logger.warning(
+                    f"{self} gravity-compensation thread did not stop within timeout; "
+                    "it may still be running."
+                )
             self._gravity_thread = None
 
         # Keep torque enabled so the arm holds its last commanded position instead of free-falling.
