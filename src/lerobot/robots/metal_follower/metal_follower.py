@@ -23,7 +23,7 @@ from typing import Any
 from lerobot.cameras import make_cameras_from_configs
 from lerobot.motors import Motor, MotorNormMode
 from lerobot.motors.damiao import DamiaoMotorsBus
-from lerobot.motors.metal import METAL_JOINT_LIMITS_DEG, METAL_MOTOR_CONFIG
+from lerobot.motors.metal import METAL_FOLLOWER_GAINS, METAL_JOINT_LIMITS_DEG, METAL_MOTOR_CONFIG
 from lerobot.types import RobotAction, RobotObservation
 from lerobot.utils.decorators import check_if_already_connected, check_if_not_connected
 
@@ -114,6 +114,13 @@ class MetalFollower(Robot):
 
         self.bus.enable_torque()
 
+        # Set firm follow gains (bus default kp=10 is far too soft to hold the arm against
+        # gravity → the follower sags). Uses vendor follow_mit_kp/kd unless overridden.
+        gains = self.config.gains or METAL_FOLLOWER_GAINS
+        gains = {m: kpkd for m, kpkd in gains.items() if m in self._joint_motor_names}
+        self.bus.sync_write("Kp", {m: kp for m, (kp, kd) in gains.items()})
+        self.bus.sync_write("Kd", {m: kd for m, (kp, kd) in gains.items()})
+
         logger.info(f"{self} connected.")
 
     @property
@@ -127,7 +134,7 @@ class MetalFollower(Robot):
         pass
 
     def configure(self) -> None:
-        """No-op: bus-default MIT gains (kp=10, kd=0.5) are used; no per-motor tuning here."""
+        """No-op: follow gains are set in connect() from METAL_FOLLOWER_GAINS / config.gains."""
         pass
 
     @check_if_not_connected

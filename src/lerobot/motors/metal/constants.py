@@ -24,3 +24,17 @@ METAL_JOINT_LIMITS_DEG: dict[str, tuple[float, float]] = {
     "joint5": (-85.0, 85.0),
     "joint6": (-145.0, 145.0),
 }
+
+# Follower MIT gains (kp, kd) from vendor motor_config.cpp follow_mit_kp/follow_mit_kd.
+# lerobot's MIT_KP_RANGE=(0,500) / MIT_KD_RANGE=(0,5) match the vendor exactly, so these
+# copy over with identical meaning. Bus defaults (kp=10) are far too soft to hold the arm
+# against gravity, so the follower sets these at connect for firm, responsive tracking.
+METAL_FOLLOWER_GAINS: dict[str, tuple[float, float]] = {
+    "joint1": (200.0, 3.0),
+    "joint2": (500.0, 5.0),
+    "joint3": (400.0, 5.0),
+    "joint4": (200.0, 2.0),
+    "joint5": (20.0, 0.1),
+    "joint6": (20.0, 0.1),
+    "gripper": (20.0, 0.1),
+}

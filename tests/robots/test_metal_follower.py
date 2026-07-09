@@ -61,3 +61,15 @@ def test_factory_builds_metal_follower():
     r = make_robot_from_config(MetalFollowerConfig(port="can0"))
     assert r.name == "metal_follower"
     assert type(r).__name__ == "MetalFollower"
+
+
+def test_connect_sets_follow_gains(follower):
+    from lerobot.motors.metal.constants import METAL_FOLLOWER_GAINS
+
+    follower.cameras = {}
+    follower.bus.is_connected = False  # so @check_if_already_connected doesn't trip
+    follower.connect(calibrate=False)
+    kp_call = {m: kp for m, (kp, kd) in METAL_FOLLOWER_GAINS.items()}
+    kd_call = {m: kd for m, (kp, kd) in METAL_FOLLOWER_GAINS.items()}
+    follower.bus.sync_write.assert_any_call("Kp", kp_call)
+    follower.bus.sync_write.assert_any_call("Kd", kd_call)

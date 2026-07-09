@@ -48,6 +48,10 @@ class MetalFollowerConfig(RobotConfig):
     # (resolved lazily in MetalFollower.__init__ if left empty).
     urdf_path: str = ""
 
+    # Per-motor MIT follow gains {name: (kp, kd)}. None -> METAL_FOLLOWER_GAINS (vendor values).
+    # Set at connect(); the bus default (kp=10) is too soft to hold the arm against gravity.
+    gains: dict[str, tuple[float, float]] | None = None
+
     # Safety limit for relative target positions (degrees). None disables the check.
     max_relative_target: float | dict[str, float] | None = None
 
