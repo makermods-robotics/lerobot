@@ -79,3 +79,12 @@ def test_get_action_and_gravity_tick_hold_bus_lock_during_bus_access(leader):
 
     # The lock must be released again after each call completes.
     assert not leader._bus_lock.locked()
+
+
+def test_factory_builds_metal_leader():
+    from lerobot.teleoperators.utils import make_teleoperator_from_config
+    from lerobot.teleoperators.metal_leader.config_metal_leader import MetalLeaderConfig
+
+    t = make_teleoperator_from_config(MetalLeaderConfig(port="can1"))
+    assert t.name == "metal_leader"
+    assert type(t).__name__ == "MetalLeader"

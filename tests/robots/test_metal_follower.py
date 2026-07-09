@@ -52,3 +52,12 @@ def test_send_action_writes_goal_and_clamps(follower):
     out = follower.send_action(action)
     assert follower.bus.sync_write.called
     assert out["joint1.pos"] == 160.0  # clamped to joint1 upper soft limit
+
+
+def test_factory_builds_metal_follower():
+    from lerobot.robots.utils import make_robot_from_config
+    from lerobot.robots.metal_follower.config_metal_follower import MetalFollowerConfig
+
+    r = make_robot_from_config(MetalFollowerConfig(port="can0"))
+    assert r.name == "metal_follower"
+    assert type(r).__name__ == "MetalFollower"
