@@ -87,10 +87,9 @@ before tracking at full speed, so firm follow-gains don't snap it across a large
 disconnect the leader **stops gravity compensation and holds its current pose**
 (`hold_kp_on_disconnect`) so the arm freezes in place instead of dropping.
 
-The Pinocchio model was cross-checked against the vendor's own KDL-based gravity computation
-and agrees to machine precision (max ~5e-11 N·m, mean ~1e-12 N·m, vs signals up to ~14 N·m)
-across the sampled configurations — see
-`docs/metal/gravity_validation/` for the validation harness (`kdl_oracle.cpp` + `validate.py`).
+The Pinocchio model was cross-checked offline against the vendor's own KDL-based gravity
+computation and agrees to machine precision (max ~5e-11 N·m, mean ~1e-12 N·m, vs signals up to
+~14 N·m across the sampled configurations).
 
 ## Usage
 
