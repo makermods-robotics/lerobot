@@ -72,11 +72,20 @@ The gripper is not optional — both the follower and leader always expose all 7
 
 ## Gravity Compensation
 
-The leader's gravity-compensation torque is computed by Pinocchio from the URDF bundled with
-the driver (`src/lerobot/motors/metal/urdf/`), evaluated on a background thread at
-`gravity_hz` (default 200 Hz) and streamed to the motors as MIT feed-forward torque, with
-`kp=0` so the arm stays freely backdrivable and `kd` (`leader_kd`, default `0.3`) supplying
-damping/feel.
+The leader's feed-forward torque is computed by Pinocchio from the URDF bundled with the driver
+(`src/lerobot/motors/metal/urdf/`), evaluated on a background thread at `gravity_hz` (default
+200 Hz) and streamed to the motors as MIT torque with `kp=0` so the arm stays freely
+backdrivable. On top of gravity, a **per-joint friction feed-forward** (`friction_scale`, fed the
+measured joint velocity) cancels each joint's own gearbox friction so the arm feels transparent
+to guide, and the gripper gets its own friction feed-forward (`gripper_friction_scale`).
+`leader_kd` (default `0.0`) adds a small MIT velocity damping and is also the brake against
+friction-feed-forward runaway — both `leader_kd` and `friction_scale` accept a single value or a
+per-joint dict, since each joint's real friction differs.
+
+At teleop start the follower **slowly syncs** to the leader's pose (`startup_sync_speed_deg`)
+before tracking at full speed, so firm follow-gains don't snap it across a large gap. On
+disconnect the leader **stops gravity compensation and holds its current pose**
+(`hold_kp_on_disconnect`) so the arm freezes in place instead of dropping.
 
 The Pinocchio model was cross-checked against the vendor's own KDL-based gravity computation
 and agrees to machine precision (max ~5e-11 N·m, mean ~1e-12 N·m, vs signals up to ~14 N·m)
@@ -214,6 +223,9 @@ lerobot-record \
 | `urdf_path`                      | `""`           | Overrides the bundled `metal_with_gripper.urdf` if set          |
 | `max_relative_target`            | `None`         | Safety limit for relative target positions                     |
 | `disable_torque_on_disconnect`   | `False`        | Whether to disable torque when disconnecting                   |
+| `gains`                          | `None`         | Per-motor MIT follow gains `{name: (kp, kd)}`; `None` uses the vendor `METAL_FOLLOWER_GAINS` |
+| `startup_sync_speed_deg`         | `1.0`          | Max degrees/step during the slow initial sync to the leader; `None` disables |
+| `startup_sync_tolerance_deg`     | `3.0`          | Once within this of the target, switch to full-speed tracking  |
 
 ### Leader Configuration
 
@@ -224,12 +236,22 @@ lerobot-record \
 | `can_bitrate`     | `1000000` | Classic CAN bitrate (1 Mbps)                                            |
 | `urdf_path`       | `""`      | Overrides the bundled `metal_with_gripper.urdf` if set                  |
 | `gravity_hz`      | `200`     | Background gravity-compensation thread rate                            |
-| `leader_kd`       | `0.3`     | MIT damping gain while gravity-compensated (`kp` is always 0)           |
+| `leader_kd`       | `0.0`     | MIT velocity damping while gravity-compensated (`kp` is always 0); float or per-joint dict |
+| `use_velocity_feedforward` | `True` | Feed measured velocity to activate the friction/coriolis feed-forward |
+| `friction_scale`  | per-joint | Friction feed-forward scale; float or per-joint dict (tuned defaults per joint) |
+| `velocity_deadzone_rad_s` | `0.05` | Velocities below this are treated as 0 (rejects encoder noise at rest) |
+| `gripper_friction_scale` | `1.0` | Scales the gripper friction feed-forward; `0` disables it              |
+| `hold_kp_on_disconnect` | `50.0` | On disconnect, hold the current pose with this MIT `kp`; `0` leaves the arm limp |
+| `hold_kd_on_disconnect` | `1.0`  | MIT `kd` for the disconnect hold                                        |
 
 ## Status Notes
 
-- **Follower gains use bus defaults.** Position `kp`/`kd` are not yet tuned per-joint for the
-  Metal arm; expect to tune them on hardware for your specific build.
+- **Follower uses the vendor per-joint follow-gains** (`METAL_FOLLOWER_GAINS`), applied at
+  `connect()` — the bus default `kp=10` is far too soft to hold the arm against gravity. Override
+  per build with the `gains` config option.
+- **Leader hand-feel is tuned on hardware.** The default `friction_scale` and `leader_kd` were
+  tuned on a physical arm; the friction feed-forward is positive feedback, so re-tune per build
+  (raising `friction_scale` for a lighter feel, watching for runaway).
 - **Gripper is raw motor degrees today.** `gripper.pos` is passed through in raw motor degrees,
   not normalized to physical stroke. A stroke-to-angle lookup table
   (`src/lerobot/motors/metal/gripper.py`, ported from the vendor SDK) is available for a future
