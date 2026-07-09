@@ -110,9 +110,15 @@ class MetalLeader(Teleoperator):
     def connect(self, calibrate: bool = True) -> None:
         logger.info(f"Connecting arm on {self.config.port}...")
         self.bus.connect()
-        self.bus.enable_torque()
 
-        self._gravity = MetalGravityModel(self.config.urdf_path)
+        # Build the gravity model BEFORE enabling torque: if the URDF / Pinocchio load fails,
+        # the arm must not be left powered with no gravity-compensation thread running.
+        try:
+            self._gravity = MetalGravityModel(self.config.urdf_path)
+        except Exception:
+            self.bus.disconnect(disable_torque=False)
+            raise
+        self.bus.enable_torque()
 
         self._gravity_stop_event.clear()
         self._gravity_thread = threading.Thread(target=self._gravity_loop, daemon=True)
