@@ -51,7 +51,15 @@ def test_gravity_tick_sends_mit_zero_kp_and_gravity_torque(leader):
     kp, kd, pos, vel, tau = cmds["joint1"]
     assert kp == 0.0 and tau == 0.1
     gkp, gkd, gpos, gvel, gtau = cmds["gripper"]
-    assert gkp == 0.0 and gtau == 0.0  # gripper backdrivable, no gravity torque
+    # gripper: kp=0 (backdrivable), no GRAVITY torque, but a friction feedforward (0.06 at rest).
+    assert gkp == 0.0 and gtau == pytest.approx(0.06)
+
+
+def test_gripper_friction_disabled(leader):
+    leader.config.gripper_friction_scale = 0.0
+    leader._gravity_tick()
+    (cmds,), _ = leader.bus.sync_write_mit.call_args
+    assert cmds["gripper"][4] == 0.0
 
 
 def test_get_action_and_gravity_tick_hold_bus_lock_during_bus_access(leader):

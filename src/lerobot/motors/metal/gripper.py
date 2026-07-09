@@ -1,6 +1,25 @@
 """Nonlinear gripper stroke(mm) <-> motor angle(rad) lookup, ported verbatim from
-the metal SDK (can_manager.h distances_/angles_). NOT a linear gear ratio."""
+the metal SDK (can_manager.h distances_/angles_). NOT a linear gear ratio.
+Also the vendor's gripper friction feedforward (kdl_solver.cpp GripperTorqueCompensation)."""
+import math
+
 from .constants import GRIPPER_MAX_MM
+
+# Vendor gripper friction feedforward constants (kdl_solver.cpp GripperTorqueCompensation).
+_GRIP_STOP_TORQUE = 0.06        # small torque applied at rest to overcome stiction
+_GRIP_STATIC_FRICTION = 0.03    # Coulomb friction, applied in the direction of motion
+_GRIP_VISCOUS = 0.01            # viscous coefficient (velocity clamped to +/-3 rad/s)
+
+
+def gripper_friction_torque(velocity_rad_s: float) -> float:
+    """Feedforward torque (N·m) to cancel the gripper's own friction so the leader gripper is
+    easy to squeeze. Ported from the vendor: constant stop torque at rest, else Coulomb (sign of
+    velocity) + viscous. Scale/disable via the leader's gripper_friction_scale."""
+    if -1e-5 < velocity_rad_s < 1e-5:
+        return _GRIP_STOP_TORQUE
+    static = math.copysign(_GRIP_STATIC_FRICTION, velocity_rad_s)
+    v = max(-3.0, min(3.0, velocity_rad_s))
+    return v * _GRIP_VISCOUS + static
 
 # distances_ (mm) and angles_ (rad) — index-aligned, monotonically increasing.
 _DIST = [

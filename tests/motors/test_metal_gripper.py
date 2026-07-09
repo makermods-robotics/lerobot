@@ -1,7 +1,17 @@
 import math
+
+import pytest
+
 from lerobot.motors.metal.gripper import (
-    stroke_mm_to_rad, rad_to_stroke_mm, norm_to_stroke_mm, stroke_mm_to_norm,
+    gripper_friction_torque, norm_to_stroke_mm, rad_to_stroke_mm, stroke_mm_to_norm, stroke_mm_to_rad,
 )
+
+
+def test_gripper_friction_torque():
+    assert gripper_friction_torque(0.0) == pytest.approx(0.06)           # stop torque at rest
+    assert gripper_friction_torque(1.0) == pytest.approx(0.03 + 0.01)    # coulomb + viscous, +dir
+    assert gripper_friction_torque(-1.0) == pytest.approx(-0.03 - 0.01)  # opposite direction
+    assert gripper_friction_torque(100.0) == pytest.approx(0.03 + 3.0 * 0.01)  # viscous vel clamp
 
 def test_endpoints():
     assert stroke_mm_to_rad(0.0) == 0.002          # angles_[0]

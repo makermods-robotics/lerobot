@@ -75,3 +75,7 @@ class MetalLeaderConfig(TeleoperatorConfig):
         }
     )
     velocity_deadzone_rad_s: float = 0.05
+
+    # Scales the gripper friction feedforward (vendor GripperTorqueCompensation) so the leader
+    # gripper is easy to squeeze. 0 disables it (gripper left at torque=0). Tune on hardware.
+    gripper_friction_scale: float = 1.0

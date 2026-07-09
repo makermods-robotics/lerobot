@@ -25,6 +25,7 @@ from lerobot.motors import Motor, MotorNormMode
 from lerobot.motors.damiao import DamiaoMotorsBus
 from lerobot.motors.metal import METAL_GRIPPER_NAME, METAL_JOINT_NAMES, METAL_MOTOR_CONFIG
 from lerobot.motors.metal.gravity import MetalGravityModel
+from lerobot.motors.metal.gripper import gripper_friction_torque
 from lerobot.types import RobotAction
 from lerobot.utils.decorators import check_if_already_connected, check_if_not_connected
 
@@ -193,13 +194,17 @@ class MetalLeader(Teleoperator):
                 commands: dict[str, tuple[float, float, float, float, float]] = {}
                 for i, motor in enumerate(METAL_JOINT_NAMES):
                     commands[motor] = (0.0, kd_of(motor), present[motor], 0.0, tau[i])
-                # Gripper: backdrivable, no gravity torque, so the human can squeeze it freely.
+                # Gripper: backdrivable (kp=0) with a friction feedforward so it's easy to squeeze.
+                grip_tau = 0.0
+                if self.config.use_velocity_feedforward and self.config.gripper_friction_scale > 0.0:
+                    grip_v = radians(states[METAL_GRIPPER_NAME]["velocity"])
+                    grip_tau = self.config.gripper_friction_scale * gripper_friction_torque(grip_v)
                 commands[METAL_GRIPPER_NAME] = (
                     0.0,
                     kd_of(METAL_GRIPPER_NAME),
                     present[METAL_GRIPPER_NAME],
                     0.0,
-                    0.0,
+                    grip_tau,
                 )
 
                 self.bus.sync_write_mit(commands)
