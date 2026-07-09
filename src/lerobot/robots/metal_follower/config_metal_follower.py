@@ -55,7 +55,7 @@ class MetalFollowerConfig(RobotConfig):
     # Slow initial synchronization: at teleop start the follower can be far from the leader, and
     # firm follow gains would snap it there hard. Until it has caught up, cap each joint's per-step
     # motion to this many degrees (gentle alignment), then track at full speed. None disables it.
-    startup_sync_speed_deg: float | None = 3.0
+    startup_sync_speed_deg: float | None = 1.0
     startup_sync_tolerance_deg: float = 3.0
 
     # Safety limit for relative target positions (degrees). None disables the check.
