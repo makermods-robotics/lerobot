@@ -1,7 +1,8 @@
 {
   "robot": {
     "type": "metal_follower",
-    "port": "can0",
+    "port": "/dev/ttyACM0",
+    "can_interface": "slcan",
     "max_relative_target": {"joint1": 3, "joint2": 3, "joint3": 4, "joint4": 4, "joint5": 3, "joint6": 3, "gripper": 5},
     "gains": {"joint1": [200, 3], "joint2": [500, 5], "joint3": [400, 5], "joint4": [200, 2], "joint5": [20, 0.1], "joint6": [20, 0.1], "gripper": [20, 0.1]}
   },
