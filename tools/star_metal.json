@@ -3,15 +3,15 @@
     "type": "metal_follower",
     "port": "/dev/ttyACM0",
     "can_interface": "slcan",
-    "max_relative_target": {"joint1": 3, "joint2": 3, "joint3": 4, "joint4": 4, "joint5": 3, "joint6": 3, "gripper": 5},
-    "gains": {"joint1": [200, 3], "joint2": [500, 5], "joint3": [400, 5], "joint4": [200, 2], "joint5": [20, 0.1], "joint6": [20, 0.1], "gripper": [20, 0.1]}
+    "max_relative_target": {"shoulder_pan": 3, "shoulder_lift": 3, "elbow_flex": 4, "wrist_flex": 4, "wrist_yaw": 3, "wrist_roll": 3, "gripper": 5},
+    "gains": {"shoulder_pan": [200, 3], "shoulder_lift": [500, 5], "elbow_flex": [400, 5], "wrist_flex": [200, 2], "wrist_yaw": [20, 0.1], "wrist_roll": [20, 0.1], "gripper": [20, 0.1]}
   },
   "teleop": {
     "type": "rebot_102_leader",
     "port": "/dev/ttyUSB0",
     "id": "star_metal",
-    "joint_ids": {"joint1": 0, "joint2": 1, "joint3": 2, "joint4": 3, "joint5": 4, "joint6": 5, "gripper": 6},
-    "joint_directions": {"joint1": -1, "joint2": -1, "joint3": -0.667, "joint4": -1, "joint5": 1, "joint6": -1, "gripper": 1.895},
-    "joint_ranges": {"joint1": [-160, 160], "joint2": [-180, 0], "joint3": [0, 180], "joint4": [-123, 81], "joint5": [-85, 85], "joint6": [-145, 145], "gripper": [-5, 115]}
+    "joint_ids": {"shoulder_pan": 0, "shoulder_lift": 1, "elbow_flex": 2, "wrist_flex": 3, "wrist_yaw": 4, "wrist_roll": 5, "gripper": 6},
+    "joint_directions": {"shoulder_pan": -1, "shoulder_lift": -1, "elbow_flex": -0.667, "wrist_flex": -1, "wrist_yaw": 1, "wrist_roll": -1, "gripper": 1.895},
+    "joint_ranges": {"shoulder_pan": [-160, 160], "shoulder_lift": [-180, 0], "elbow_flex": [0, 180], "wrist_flex": [-123, 81], "wrist_yaw": [-85, 85], "wrist_roll": [-145, 145], "gripper": [-5, 115]}
   }
 }

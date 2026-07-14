@@ -60,12 +60,12 @@ IDs run `0x01..0x07` / `0x11..0x17`:
 
 | Joint    | Motor Type | Send ID | Recv ID |
 | -------- | ---------- | ------- | ------- |
-| joint1   | metal_jlo  | 0x01    | 0x11    |
-| joint2   | metal_j2   | 0x02    | 0x12    |
-| joint3   | metal_jlo  | 0x03    | 0x13    |
-| joint4   | metal_jlo  | 0x04    | 0x14    |
-| joint5   | metal_jhi  | 0x05    | 0x15    |
-| joint6   | metal_jhi  | 0x06    | 0x16    |
+| shoulder_pan   | metal_jlo  | 0x01    | 0x11    |
+| shoulder_lift   | metal_j2   | 0x02    | 0x12    |
+| elbow_flex   | metal_jlo  | 0x03    | 0x13    |
+| wrist_flex   | metal_jlo  | 0x04    | 0x14    |
+| wrist_yaw   | metal_jhi  | 0x05    | 0x15    |
+| wrist_roll   | metal_jhi  | 0x06    | 0x16    |
 | gripper  | metal_jhi  | 0x07    | 0x17    |
 
 The gripper is not optional — both the follower and leader always expose all 7 motors.
@@ -125,12 +125,12 @@ print(obs)
 
 # Send action (position in degrees; gripper in raw motor degrees)
 action = {
-    "joint1.pos": 0.0,
-    "joint2.pos": -90.0,
-    "joint3.pos": 90.0,
-    "joint4.pos": 0.0,
-    "joint5.pos": 0.0,
-    "joint6.pos": 0.0,
+    "shoulder_pan.pos": 0.0,
+    "shoulder_lift.pos": -90.0,
+    "elbow_flex.pos": 90.0,
+    "wrist_flex.pos": 0.0,
+    "wrist_yaw.pos": 0.0,
+    "wrist_roll.pos": 0.0,
     "gripper.pos": 0.0,
 }
 follower.send_action(action)

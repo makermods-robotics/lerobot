@@ -185,9 +185,11 @@ class MetalLeader(Teleoperator):
                 # Resolve kd per motor (float -> all joints; dict -> per-joint, missing -> 0).
                 kd_cfg = self.config.leader_kd
                 if isinstance(kd_cfg, dict):
+
                     def kd_of(m):
                         return float(kd_cfg.get(m, 0.0))
                 else:
+
                     def kd_of(m):
                         return float(kd_cfg)
 

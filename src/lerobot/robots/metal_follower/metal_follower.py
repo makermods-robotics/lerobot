@@ -15,7 +15,9 @@
 # limitations under the License.
 
 import logging
+import statistics
 import time
+from collections import deque
 from functools import cached_property
 from pathlib import Path
 from typing import Any
@@ -84,6 +86,15 @@ class MetalFollower(Robot):
         # False until the follower has caught up to the leader (slow initial sync), then full speed.
         self._synced = False
 
+        # Acceleration-limiter state (only used when config.max_relative_accel_deg is set):
+        # last commanded goal and last per-step motion, per motor. Reset on every connect().
+        self._prev_goal: dict[str, float] = {}
+        self._prev_step: dict[str, float] = {}
+
+        # Median-filter state (only used when config.median_filter_window > 1): recent raw actions
+        # per motor. Reset on every connect().
+        self._goal_hist: dict[str, deque] = {}
+
     @property
     def _motors_ft(self) -> dict[str, type]:
         return {f"{motor}.pos": float for motor in self._joint_motor_names}
@@ -117,6 +128,9 @@ class MetalFollower(Robot):
 
         self.bus.enable_torque()
         self._synced = False  # re-arm the slow initial sync on every connect
+        self._prev_goal.clear()  # re-arm the acceleration limiter
+        self._prev_step.clear()
+        self._goal_hist.clear()  # re-arm the median filter
 
         # Set firm follow gains (bus default kp=10 is far too soft to hold the arm against
         # gravity → the follower sags). Uses vendor follow_mit_kp/kd unless overridden.
@@ -166,6 +180,16 @@ class MetalFollower(Robot):
     def send_action(self, action: RobotAction) -> RobotAction:
         goal_pos = {key.removesuffix(".pos"): val for key, val in action.items() if key.endswith(".pos")}
 
+        # Median filter (on the raw action, before anything else): a single-frame spike in the
+        # policy output is discarded by the median while real motion passes through. Best defense
+        # against per-frame jitter. Disabled when window <= 1. Does not touch kp/kd.
+        window = self.config.median_filter_window
+        if window and window > 1:
+            for motor_name, position in goal_pos.items():
+                buf = self._goal_hist.setdefault(motor_name, deque(maxlen=window))
+                buf.append(position)
+                goal_pos[motor_name] = statistics.median(buf)
+
         # Clamp the 6 arm joints to their soft limits; the gripper is left unclamped.
         for motor_name, position in goal_pos.items():
             if motor_name in METAL_JOINT_LIMITS_DEG:
@@ -194,6 +218,20 @@ class MetalFollower(Robot):
             present_pos = self.bus.sync_read("Present_Position")
             goal_present_pos = {key: (g_pos, present_pos[key]) for key, g_pos in goal_pos.items()}
             goal_pos = ensure_safe_goal_position(goal_present_pos, self.config.max_relative_target)
+
+        # Acceleration (jerk) limit: cap how much each joint's per-step motion can change from the
+        # previous step, so the arm can't suddenly accelerate/decelerate. Operates on the commanded
+        # goal trajectory and does not touch kp/kd. Smooths starts/stops and policy-output spikes.
+        accel = self.config.max_relative_accel_deg
+        if accel is not None:
+            for motor_name, position in goal_pos.items():
+                prev_goal = self._prev_goal.get(motor_name, position)
+                prev_step = self._prev_step.get(motor_name, 0.0)
+                desired_step = position - prev_goal
+                limited_step = max(prev_step - accel, min(prev_step + accel, desired_step))
+                goal_pos[motor_name] = prev_goal + limited_step
+                self._prev_step[motor_name] = limited_step
+            self._prev_goal.update(goal_pos)
 
         self.bus.sync_write("Goal_Position", goal_pos)
 

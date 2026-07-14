@@ -27,7 +27,7 @@ from lerobot.teleoperators.metal_leader.metal_leader import MetalLeader
 def leader():
     t = MetalLeader(MetalLeaderConfig(port="can1", gravity_hz=200))
     t.bus = MagicMock()
-    t.bus.sync_read.return_value = {m: 0.0 for m in t._joint_motor_names}
+    t.bus.sync_read.return_value = dict.fromkeys(t._joint_motor_names, 0.0)
     t.bus.sync_read_all_states.return_value = {
         m: {"position": 0.0, "velocity": 0.0, "torque": 0.0} for m in t._joint_motor_names
     }
@@ -48,7 +48,7 @@ def test_get_action_returns_positions(leader):
 def test_gravity_tick_sends_mit_zero_kp_and_gravity_torque(leader):
     leader._gravity_tick()
     (cmds,), _ = leader.bus.sync_write_mit.call_args
-    kp, kd, pos, vel, tau = cmds["joint1"]
+    kp, kd, pos, vel, tau = cmds["shoulder_pan"]
     assert kp == 0.0 and tau == 0.1
     gkp, gkd, gpos, gvel, gtau = cmds["gripper"]
     # gripper: kp=0 (backdrivable), no GRAVITY torque, but a friction feedforward (0.06 at rest).
@@ -73,7 +73,7 @@ def test_get_action_and_gravity_tick_hold_bus_lock_during_bus_access(leader):
 
     def fake_sync_read(*args, **kwargs):
         observed_locked_during_read.append(leader._bus_lock.locked())
-        return {m: 0.0 for m in leader._joint_motor_names}
+        return dict.fromkeys(leader._joint_motor_names, 0.0)
 
     def fake_sync_read_all_states(*args, **kwargs):
         observed_locked_during_read.append(leader._bus_lock.locked())
@@ -119,7 +119,7 @@ def test_friction_disabled_skips_velocity_pass(leader):
 
 
 def test_leader_kd_per_joint_dict():
-    t = MetalLeader(MetalLeaderConfig(port="can1", leader_kd={"joint1": 0.5, "joint2": 0.2}))
+    t = MetalLeader(MetalLeaderConfig(port="can1", leader_kd={"shoulder_pan": 0.5, "shoulder_lift": 0.2}))
     t.bus = MagicMock()
     t.bus.sync_read_all_states.return_value = {
         m: {"position": 0.0, "velocity": 0.0, "torque": 0.0} for m in t._joint_motor_names
@@ -128,13 +128,13 @@ def test_leader_kd_per_joint_dict():
     t._gravity.feedforward_torque.return_value = [0.0] * 6
     t._gravity_tick()
     (cmds,), _ = t.bus.sync_write_mit.call_args
-    assert cmds["joint1"][1] == 0.5
-    assert cmds["joint2"][1] == 0.2
-    assert cmds["joint3"][1] == 0.0  # absent from dict -> 0
+    assert cmds["shoulder_pan"][1] == 0.5
+    assert cmds["shoulder_lift"][1] == 0.2
+    assert cmds["elbow_flex"][1] == 0.0  # absent from dict -> 0
 
 
 def test_friction_scale_per_joint_dict():
-    t = MetalLeader(MetalLeaderConfig(port="can1", leader_kd=0.0, friction_scale={"joint1": 2.0}))
+    t = MetalLeader(MetalLeaderConfig(port="can1", leader_kd=0.0, friction_scale={"shoulder_pan": 2.0}))
     t.bus = MagicMock()
     t.bus.sync_read_all_states.return_value = {
         m: {"position": 0.0, "velocity": 30.0, "torque": 0.0} for m in t._joint_motor_names
@@ -143,24 +143,24 @@ def test_friction_scale_per_joint_dict():
     t._gravity.feedforward_torque.side_effect = [[1.0] * 6, [2.0] * 6]  # gravity, then full
     t._gravity_tick()
     (cmds,), _ = t.bus.sync_write_mit.call_args
-    assert cmds["joint1"][4] == pytest.approx(3.0)  # 1.0 + 2.0*(2.0-1.0)
-    assert cmds["joint2"][4] == pytest.approx(1.0)  # absent -> scale 0 -> gravity only
+    assert cmds["shoulder_pan"][4] == pytest.approx(3.0)  # 1.0 + 2.0*(2.0-1.0)
+    assert cmds["shoulder_lift"][4] == pytest.approx(1.0)  # absent -> scale 0 -> gravity only
 
 
 def test_disconnect_holds_pose(leader):
     leader.bus.is_connected = True  # so @check_if_not_connected passes
     leader._gravity_thread = None  # nothing to join
-    leader.bus.sync_read.return_value = {m: 10.0 for m in leader._joint_motor_names}
+    leader.bus.sync_read.return_value = dict.fromkeys(leader._joint_motor_names, 10.0)
     leader.disconnect()
     (cmds,), _ = leader.bus.sync_write_mit.call_args
-    kp, kd, pos, vel, tau = cmds["joint1"]
+    kp, kd, pos, vel, tau = cmds["shoulder_pan"]
     assert kp == 50.0 and pos == 10.0  # position hold with kp>0 (gravity comp stopped)
     leader.bus.disconnect.assert_called_with(disable_torque=False)
 
 
 def test_factory_builds_metal_leader():
-    from lerobot.teleoperators.utils import make_teleoperator_from_config
     from lerobot.teleoperators.metal_leader.config_metal_leader import MetalLeaderConfig
+    from lerobot.teleoperators.utils import make_teleoperator_from_config
 
     t = make_teleoperator_from_config(MetalLeaderConfig(port="can1"))
     assert t.name == "metal_leader"

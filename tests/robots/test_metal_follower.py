@@ -28,24 +28,24 @@ def follower():
     # test covers the sync behaviour).
     r = MetalFollower(MetalFollowerConfig(port="can0", startup_sync_speed_deg=None))
     r.bus = MagicMock()
-    r.bus.sync_read.return_value = {m: 0.0 for m in r._joint_motor_names}
+    r.bus.sync_read.return_value = dict.fromkeys(r._joint_motor_names, 0.0)
     return r
 
 
 def test_has_all_seven_motors(follower):
     assert follower._joint_motor_names == [
-        "joint1",
-        "joint2",
-        "joint3",
-        "joint4",
-        "joint5",
-        "joint6",
+        "shoulder_pan",
+        "shoulder_lift",
+        "elbow_flex",
+        "wrist_flex",
+        "wrist_yaw",
+        "wrist_roll",
         "gripper",
     ]
 
 
 def test_action_features_include_all_motors(follower):
-    assert "joint1.pos" in follower.action_features
+    assert "shoulder_pan.pos" in follower.action_features
     assert "gripper.pos" in follower.action_features
 
 
@@ -53,12 +53,50 @@ def test_send_action_writes_goal_and_clamps(follower):
     action = {f"{m}.pos": 999.0 for m in follower._joint_motor_names}
     out = follower.send_action(action)
     assert follower.bus.sync_write.called
-    assert out["joint1.pos"] == 160.0  # clamped to joint1 upper soft limit
+    assert out["shoulder_pan.pos"] == 160.0  # clamped to shoulder_pan upper soft limit
+
+
+def test_acceleration_limit_off_by_default(follower):
+    # max_relative_accel_deg defaults to None -> no acceleration limiting, only soft-limit clamp.
+    out = follower.send_action({"shoulder_pan.pos": 999.0})
+    assert out["shoulder_pan.pos"] == 160.0  # clamped to soft limit, unaffected by accel limiter
+
+
+def test_acceleration_limit_ramps_step():
+    r = MetalFollower(
+        MetalFollowerConfig(port="can0", startup_sync_speed_deg=None, max_relative_accel_deg=2.0)
+    )
+    r.bus = MagicMock()
+    r.bus.sync_read.return_value = dict.fromkeys(r._joint_motor_names, 0.0)
+    # 1st call establishes the baseline (prev_goal seeds to this position) -> passes through.
+    assert r.send_action({"shoulder_pan.pos": 10.0})["shoulder_pan.pos"] == pytest.approx(10.0)
+    # 2nd call: desired step +10, but step may only change by +2 from prev step (0) -> +2 -> 12.
+    assert r.send_action({"shoulder_pan.pos": 20.0})["shoulder_pan.pos"] == pytest.approx(12.0)
+    # 3rd call: prev step 2, desired +8, capped to prev_step + 2 = 4 -> 16 (velocity ramps up).
+    assert r.send_action({"shoulder_pan.pos": 20.0})["shoulder_pan.pos"] == pytest.approx(16.0)
+
+
+def test_median_filter_off_by_default(follower):
+    # median_filter_window defaults to 1 -> no filtering, only soft-limit clamp.
+    out = follower.send_action({"shoulder_pan.pos": 999.0})
+    assert out["shoulder_pan.pos"] == 160.0
+
+
+def test_median_filter_rejects_single_spike():
+    r = MetalFollower(MetalFollowerConfig(port="can0", startup_sync_speed_deg=None, median_filter_window=3))
+    r.bus = MagicMock()
+    r.bus.sync_read.return_value = dict.fromkeys(r._joint_motor_names, 0.0)
+    assert r.send_action({"shoulder_pan.pos": 10.0})["shoulder_pan.pos"] == pytest.approx(10.0)  # [10]
+    assert r.send_action({"shoulder_pan.pos": 10.0})["shoulder_pan.pos"] == pytest.approx(10.0)  # [10,10]
+    # a single spike to 100 -> median of [10,10,100] = 10, spike is discarded
+    assert r.send_action({"shoulder_pan.pos": 100.0})["shoulder_pan.pos"] == pytest.approx(10.0)
+    # next frame back to 10 -> median of [10,100,10] = 10, still clean
+    assert r.send_action({"shoulder_pan.pos": 10.0})["shoulder_pan.pos"] == pytest.approx(10.0)
 
 
 def test_factory_builds_metal_follower():
-    from lerobot.robots.utils import make_robot_from_config
     from lerobot.robots.metal_follower.config_metal_follower import MetalFollowerConfig
+    from lerobot.robots.utils import make_robot_from_config
 
     r = make_robot_from_config(MetalFollowerConfig(port="can0"))
     assert r.name == "metal_follower"
@@ -66,14 +104,16 @@ def test_factory_builds_metal_follower():
 
 
 def test_startup_slow_sync_clamps_then_syncs():
-    r = MetalFollower(MetalFollowerConfig(port="can0", startup_sync_speed_deg=3.0, startup_sync_tolerance_deg=3.0))
+    r = MetalFollower(
+        MetalFollowerConfig(port="can0", startup_sync_speed_deg=3.0, startup_sync_tolerance_deg=3.0)
+    )
     r.bus = MagicMock()
-    r.bus.sync_read.return_value = {"joint1": 0.0}
-    out = r.send_action({"joint1.pos": 50.0})
-    assert out["joint1.pos"] == 3.0  # clamped to +3 deg/step from present 0
+    r.bus.sync_read.return_value = {"shoulder_pan": 0.0}
+    out = r.send_action({"shoulder_pan.pos": 50.0})
+    assert out["shoulder_pan.pos"] == 3.0  # clamped to +3 deg/step from present 0
     assert r._synced is False
-    r.bus.sync_read.return_value = {"joint1": 48.0}
-    r.send_action({"joint1.pos": 50.0})  # err 2 <= tolerance 3 -> synced
+    r.bus.sync_read.return_value = {"shoulder_pan": 48.0}
+    r.send_action({"shoulder_pan.pos": 50.0})  # err 2 <= tolerance 3 -> synced
     assert r._synced is True
 
 

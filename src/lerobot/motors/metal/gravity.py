@@ -13,6 +13,7 @@ class MetalGravityModel:
     def __init__(self, urdf_path: str):
         import numpy as np
         import pinocchio as pin
+
         self._np = np
         self._pin = pin
         self.model = pin.buildModelFromUrdf(urdf_path)
@@ -31,8 +32,8 @@ class MetalGravityModel:
         np, pin = self._np, self._pin
         q = np.asarray(q_rad[:6], dtype=float)
         dq = np.asarray(dq_rad[:6], dtype=float)
-        C = pin.computeCoriolisMatrix(self.model, self.data, q, dq)
-        return (C @ dq)[:6].tolist()
+        coriolis = pin.computeCoriolisMatrix(self.model, self.data, q, dq)
+        return (coriolis @ dq)[:6].tolist()
 
     def _friction(self, dq_rad):
         out = []

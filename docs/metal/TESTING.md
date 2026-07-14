@@ -18,7 +18,7 @@ Confirms CAN id map, enable, read-back, and a commanded move.
 ```
 python docs/metal/tests/follower_smoke.py
 ```
-Expect: printed observation for all 7 motors, and `joint6` moving ~+3° then back. If it errors on connect → check CAN up, ids `0x01..0x07`/`0x11..0x17`, power, termination.
+Expect: printed observation for all 7 motors, and `wrist_roll` moving ~+3° then back. If it errors on connect → check CAN up, ids `0x01..0x07`/`0x11..0x17`, power, termination.
 
 ## 2. Leader gravity-compensation "float" test (can1) — the key check
 ```
