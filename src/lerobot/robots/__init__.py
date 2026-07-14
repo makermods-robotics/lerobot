@@ -17,6 +17,5 @@
 from .config import RobotConfig
 from .robot import Robot
 from .utils import make_robot_from_config
-from . import metal_follower  # noqa: F401  # registers MetalFollowerConfig for the CLI --robot.type choices
 
 __all__ = ["Robot", "RobotConfig", "make_robot_from_config"]
