@@ -15,7 +15,10 @@
 # limitations under the License.
 
 import logging
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from functools import cached_property
+from typing import Any
 
 from lerobot.types import RobotAction
 from lerobot.utils.bimanual import BimanualMixin
@@ -66,6 +69,12 @@ class BiRebot102Leader(BimanualMixin, Teleoperator):
         self.left_arm = RebotArm102Leader(left_arm_config)
         self.right_arm = RebotArm102Leader(right_arm_config)
 
+        # The two leaders sit on physically independent serial buses (separate
+        # FashionStarServo instances), so their blocking reads run truly concurrently
+        # (the GIL is released during the serial waits). A persistent 2-worker pool
+        # avoids per-tick thread creation. Shut down in disconnect().
+        self._io_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix='bi_rebot_io')
+
     @cached_property
     def action_features(self) -> dict[str, type]:
         return {
@@ -77,11 +86,34 @@ class BiRebot102Leader(BimanualMixin, Teleoperator):
     def feedback_features(self) -> dict[str, type]:
         return {}
 
+    def _run_both(self, left_fn: Callable[[], Any], right_fn: Callable[[], Any]) -> tuple[Any, Any]:
+        """Run the left and right leader reads concurrently and return (left, right).
+
+        Each leader owns a separate serial bus and FashionStarServo instance, so there
+        is no shared mutable state between the two callables. Running them on the pool
+        overlaps the two buses' round-trips, roughly halving per-tick read wall time.
+        Exceptions from either arm propagate via future.result().
+        """
+        left_future = self._io_pool.submit(left_fn)
+        right_future = self._io_pool.submit(right_fn)
+        # Always wait on both futures so no arm's read is left dangling, even if one raises.
+        left_result = left_future.result()
+        right_result = right_future.result()
+        return left_result, right_result
+
+    @check_if_not_connected
+    def disconnect(self) -> None:
+        # Stop the I/O pool first so no worker touches a bus mid-disconnect, then let
+        # BimanualMixin.disconnect() close both arms.
+        self._io_pool.shutdown(wait=True)
+        super().disconnect()
+
     @check_if_not_connected
     def get_action(self) -> RobotAction:
+        left_action, right_action = self._run_both(self.left_arm.get_action, self.right_arm.get_action)
         action_dict = {}
-        action_dict.update({f"left_{k}": v for k, v in self.left_arm.get_action().items()})
-        action_dict.update({f"right_{k}": v for k, v in self.right_arm.get_action().items()})
+        action_dict.update({f"left_{k}": v for k, v in left_action.items()})
+        action_dict.update({f"right_{k}": v for k, v in right_action.items()})
         return action_dict
 
     def send_feedback(self, feedback: dict[str, float]) -> None:
