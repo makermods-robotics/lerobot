@@ -14,9 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from . import (
+    bi_metal_follower,  # noqa: F401  # registers BiMetalFollowerConfig for the CLI --robot.type choices
+    metal_follower,  # noqa: F401  # registers MetalFollowerConfig for the CLI --robot.type choices
+)
 from .config import RobotConfig
 from .robot import Robot
 from .utils import make_robot_from_config
-from . import metal_follower  # noqa: F401  # registers MetalFollowerConfig for the CLI --robot.type choices
 
 __all__ = ["Robot", "RobotConfig", "make_robot_from_config"]

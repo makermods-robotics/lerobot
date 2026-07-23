@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# Copyright 2025 The HuggingFace Inc. team. All rights reserved.
+# Copyright 2026 The HuggingFace Inc. team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from .config_metal_follower import MetalFollowerConfig, MetalFollowerConfigBase
-from .metal_follower import MetalFollower
+from .bi_metal_follower import BiMetalFollower
+from .config_bi_metal_follower import BiMetalFollowerConfig
 
-__all__ = ["MetalFollower", "MetalFollowerConfig", "MetalFollowerConfigBase"]
+__all__ = ["BiMetalFollower", "BiMetalFollowerConfig"]

@@ -21,9 +21,8 @@ from lerobot.cameras import CameraConfig
 from ..config import RobotConfig
 
 
-@RobotConfig.register_subclass("metal_follower")
 @dataclass
-class MetalFollowerConfig(RobotConfig):
+class MetalFollowerConfigBase:
     """
     Configuration for the Metal arm follower robot: 7 Damiao motors (6 joints + a permanent
     gripper) over classic CAN, driven via the stock `DamiaoMotorsBus` in MIT position control.
@@ -31,6 +30,10 @@ class MetalFollowerConfig(RobotConfig):
     Unlike OpenArms, the gripper is not optional (no `arm_end_type`): the arm always exposes all
     7 motors, all normalized in degrees (the gripper is passed through in raw motor degrees, not
     converted via a stroke table).
+
+    Kept separate from the registered `MetalFollowerConfig` so `BiMetalFollowerConfig` can embed
+    per-arm configs without referencing the RobotConfig choice registry (which would make the
+    draccus CLI parser tree self-referential).
     """
 
     # CAN interface (e.g. "can0"). Linux: "can0", "can1", etc.
@@ -61,8 +64,25 @@ class MetalFollowerConfig(RobotConfig):
     # Safety limit for relative target positions (degrees). None disables the check.
     max_relative_target: float | dict[str, float] | None = None
 
+    # Filtered finite-difference velocity feedforward for MIT position control.
+    velocity_feedforward: bool = True
+    velocity_ff_alpha: float = 0.35
+    velocity_ff_max_deg_s: float = 200.0
+
+    # Dynamic torque feedforward (gravity + Coriolis + friction, vendor-parity model from
+    # the URDF) in the tau field of the MIT frames. Requires pinocchio (lerobot[metal]).
+    # Computed from the bus state cache (fed by every response frame, so no extra CAN
+    # traffic) and clamped to 0.5 * tmax per joint. Default off until hardware-validated.
+    torque_feedforward: bool = False
+
     # Whether to disable torque when disconnecting
     disable_torque_on_disconnect: bool = False
 
     # Camera configurations
     cameras: dict[str, CameraConfig] = field(default_factory=dict)
+
+
+@RobotConfig.register_subclass("metal_follower")
+@dataclass
+class MetalFollowerConfig(RobotConfig, MetalFollowerConfigBase):
+    """Registered single-arm metal follower config (adds `id` / `calibration_dir`)."""
