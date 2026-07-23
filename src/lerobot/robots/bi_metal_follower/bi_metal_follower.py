@@ -16,6 +16,7 @@
 
 import logging
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from functools import cached_property
 from typing import Any
 
@@ -85,14 +86,26 @@ class BiMetalFollower(BimanualMixin, Robot):
         # Only for compatibility with parts of the codebase that expect `robot.cameras`.
         self.cameras = {**self.left_arm.cameras, **self.right_arm.cameras}
 
-    def _run_both(self, left_fn: Callable[[], Any], right_fn: Callable[[], Any]) -> tuple[Any, Any]:
-        """Run one I/O call per arm. Currently sequential.
+        # The two arms sit on physically independent CAN buses with independent
+        # DamiaoMotorsBus instances, so their blocking I/O runs truly concurrently
+        # (the GIL is released during the socket/serial waits). A persistent 2-worker
+        # pool avoids per-tick thread creation. Shut down in disconnect().
+        self._io_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix='bi_metal_io')
 
-        The two CAN buses are physically independent, so the calls could be truly
-        concurrent; to parallelize, replace this method only — `get_observation` /
-        `send_action` and the rest of the code are unaffected.
+    def _run_both(self, left_fn: Callable[[], Any], right_fn: Callable[[], Any]) -> tuple[Any, Any]:
+        """Run the left and right arm I/O calls concurrently and return (left, right).
+
+        Each arm owns a separate CAN bus and DamiaoMotorsBus instance, so there is no
+        shared mutable state between the two callables. Running them on the pool overlaps
+        the two buses' round-trips, roughly halving the per-tick wall time versus serial.
+        Exceptions from either arm propagate via future.result().
         """
-        return left_fn(), right_fn()
+        left_future = self._io_pool.submit(left_fn)
+        right_future = self._io_pool.submit(right_fn)
+        # Always wait on both futures so no arm's I/O is left dangling, even if one raises.
+        left_result = left_future.result()
+        right_result = right_future.result()
+        return left_result, right_result
 
     @property
     def _motors_ft(self) -> dict[str, type]:
@@ -117,6 +130,13 @@ class BiMetalFollower(BimanualMixin, Robot):
     @cached_property
     def action_features(self) -> dict[str, type]:
         return self._motors_ft
+
+    @check_if_not_connected
+    def disconnect(self) -> None:
+        # Stop the I/O pool first so no worker touches a bus mid-disconnect, then let
+        # BimanualMixin.disconnect() close both arms.
+        self._io_pool.shutdown(wait=True)
+        super().disconnect()
 
     @check_if_not_connected
     def get_observation(self) -> RobotObservation:

@@ -123,3 +123,43 @@ def test_factory_builds_bi_metal_follower():
     r = make_robot_from_config(_make_config())
     assert r.name == "bi_metal_follower"
     assert type(r).__name__ == "BiMetalFollower"
+
+
+def test_run_both_executes_concurrently(follower):
+    """Left and right arm I/O overlap in time rather than running back-to-back."""
+    import threading
+    import time
+
+    barrier = threading.Barrier(2, timeout=2.0)
+
+    def left():
+        barrier.wait()  # only returns if the right call is also in-flight
+        return "L"
+
+    def right():
+        barrier.wait()
+        return "R"
+
+    # If _run_both were sequential, the first barrier.wait() would block forever
+    # (the second call never starts) and raise BrokenBarrierError/timeout.
+    left_result, right_result = follower._run_both(left, right)
+    assert (left_result, right_result) == ("L", "R")
+
+
+def test_run_both_propagates_exception(follower):
+    def boom():
+        raise RuntimeError("arm failure")
+
+    with pytest.raises(RuntimeError, match="arm failure"):
+        follower._run_both(boom, lambda: "ok")
+
+
+def test_send_action_still_routes_with_concurrency(follower):
+    action = {
+        **{f"left_{m}.pos": 10.0 for m in follower.left_arm._joint_motor_names},
+        **{f"right_{m}.pos": 20.0 for m in follower.right_arm._joint_motor_names},
+    }
+    sent = follower.send_action(action)
+    assert sent["left_joint1.pos"] == 10.0
+    assert sent["right_joint1.pos"] == 20.0
+    assert set(sent) == set(action)
