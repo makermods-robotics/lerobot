@@ -11,7 +11,7 @@
       "joint4": 4.0,
       "joint5": 3,
       "joint6": 3,
-      "gripper": 5
+      "gripper": 15
     },
     "gains": {
       "joint1": [
