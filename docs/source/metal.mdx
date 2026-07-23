@@ -209,6 +209,50 @@ lerobot-record \
     --num-episodes=10
 ```
 
+## Star Arm 102 as Leader (Alternative Teleop)
+
+Instead of a second Metal arm, the follower can be teleoperated with a
+[Seeed Studio Star Arm 102 / reBot Arm 102](./rebot_b601) leader (`rebot_102_leader`) — a low-cost
+7-joint leader on FashionStar UART servos. The Metal-leader workflow above is unchanged; this is
+an additional option.
+
+The cross-arm joint mapping (servo ids, per-joint direction/scale, and output ranges matched to
+the Metal joint limits) lives in a single config file, [`tools/star_metal.json`](https://github.com/makermods-robotics/lerobot/blob/main/tools/star_metal.json).
+It also drives the follower's CAN adapter directly in `slcan` mode (`/dev/ttyACM0`), so no
+`slcand`/SocketCAN bring-up is needed.
+
+Install the extras (adds `motorbridge-smart-servo` for the leader's servos):
+
+```bash
+pip install -e ".[metal,rebot]"
+```
+
+Teleoperate:
+
+```bash
+lerobot-teleoperate --config_path tools/star_metal.json
+```
+
+On the very first run with a new `--teleop.id`, the leader prompts for calibration: move the
+Star Arm to its zero pose, close the gripper, and press ENTER. The calibration is saved and
+reused on later runs.
+
+Record a dataset the same way — the shared config replaces all the `--robot.*` / `--teleop.*`
+flags:
+
+```bash
+lerobot-record \
+    --config_path tools/star_metal.json \
+    --dataset.repo_id=my_hf_username/my_metal_dataset \
+    --dataset.single_task="Pick the block and place it in the box." \
+    --dataset.fps=30 \
+    --dataset.num_episodes=10
+```
+
+Adjust `port` (leader UART device), `joint_directions`, and `joint_ranges` in the JSON if your
+build differs; `joint_directions` accepts fractional values to rescale a leader joint onto a
+follower joint with a different travel (e.g. `-0.667` on `joint3`).
+
 ## Configuration Options
 
 ### Follower Configuration

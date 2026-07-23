@@ -468,6 +468,10 @@ def record(
             recorded_episodes = 0
             while recorded_episodes < cfg.dataset.num_episodes and not events["stop_recording"]:
                 log_say(f"Recording episode {dataset.num_episodes}", cfg.play_sounds)
+                # Drop a stale skip press: exit_early set after the previous phase's loop ended
+                # (e.g. during video encoding or right as the reset timer expired) would otherwise
+                # end this episode on its first iteration with an empty buffer.
+                events["exit_early"] = False
                 record_loop(
                     robot=robot,
                     events=events,
@@ -509,6 +513,14 @@ def record(
                     log_say("Re-record episode", cfg.play_sounds)
                     events["rerecord_episode"] = False
                     events["exit_early"] = False
+                    dataset.clear_episode_buffer()
+                    continue
+
+                if not dataset.has_pending_frames():
+                    logging.warning(
+                        "Episode ended with no recorded frames (skip pressed before the first "
+                        "frame was captured); re-recording instead of saving."
+                    )
                     dataset.clear_episode_buffer()
                     continue
 

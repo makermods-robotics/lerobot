@@ -68,6 +68,10 @@ def make_robot_from_config(config: RobotConfig) -> Robot:
         from .metal_follower import MetalFollower
 
         return MetalFollower(config)
+    elif config.type == "bi_metal_follower":
+        from .bi_metal_follower import BiMetalFollower
+
+        return BiMetalFollower(config)
     elif config.type == "bi_openarm_follower":
         from .bi_openarm_follower import BiOpenArmFollower
 

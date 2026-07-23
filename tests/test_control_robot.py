@@ -89,6 +89,31 @@ def test_record_and_resume(tmp_path):
     assert dataset.meta.total_tasks == 1
 
 
+def test_record_survives_stale_exit_early_press(tmp_path):
+    # A skip press (->) landing between phases (e.g. during video encoding or right as the
+    # reset timer expires) used to leak exit_early=True into the next episode, ending it on
+    # the first iteration with an empty buffer and crashing save_episode().
+    robot_cfg = MockRobotConfig()
+    teleop_cfg = MockTeleopConfig()
+    dataset_cfg = DatasetRecordConfig(
+        repo_id=DUMMY_REPO_ID,
+        single_task="Dummy task",
+        root=tmp_path / "record",
+        num_episodes=1,
+        episode_time_s=0.1,
+        reset_time_s=0,
+        push_to_hub=False,
+    )
+    cfg = RecordConfig(robot=robot_cfg, dataset=dataset_cfg, teleop=teleop_cfg, play_sounds=False)
+
+    stale_events = {"exit_early": True, "rerecord_episode": False, "stop_recording": False}
+    with patch("lerobot.scripts.lerobot_record.init_keyboard_listener", return_value=(None, stale_events)):
+        dataset = record(cfg)
+
+    assert dataset.meta.total_episodes == 1
+    assert dataset.meta.total_frames == 3
+
+
 def test_record_and_replay(tmp_path):
     robot_cfg = MockRobotConfig()
     teleop_cfg = MockTeleopConfig()

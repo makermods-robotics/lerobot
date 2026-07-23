@@ -174,7 +174,8 @@ robstride = ["lerobot[can-dep]"]
 
 # Robots
 openarms = ["lerobot[damiao]"]
-metal = ["lerobot[damiao]", "pin>=3.0.0"]
+# pyserial is needed when the follower's CAN adapter is used in "slcan" mode (serial-line CAN).
+metal = ["lerobot[damiao]", "lerobot[pyserial-dep]", "pin>=3.0.0"]
 gamepad = ["lerobot[pygame-dep]", "hidapi>=0.14.0,<0.15.0"]
 hopejr = ["lerobot[feetech]", "lerobot[pygame-dep]"]
 lekiwi = ["lerobot[feetech]", "lerobot[pyzmq-dep]"]

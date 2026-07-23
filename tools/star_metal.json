@@ -1,17 +1,100 @@
 {
   "robot": {
     "type": "metal_follower",
-    "port": "/dev/ttyACM0",
-    "can_interface": "slcan",
-    "max_relative_target": {"joint1": 3, "joint2": 3, "joint3": 4, "joint4": 4, "joint5": 3, "joint6": 3, "gripper": 5},
-    "gains": {"joint1": [200, 3], "joint2": [500, 5], "joint3": [400, 5], "joint4": [200, 2], "joint5": [20, 0.1], "joint6": [20, 0.1], "gripper": [20, 0.1]}
+    "port": "can0",
+    "can_interface": "socketcan",
+    "torque_feedforward": true,
+    "max_relative_target": {
+      "joint1": 3.0,
+      "joint2": 3.0,
+      "joint3": 4.0,
+      "joint4": 4.0,
+      "joint5": 3,
+      "joint6": 3,
+      "gripper": 5
+    },
+    "gains": {
+      "joint1": [
+        300.0,
+        5.0
+      ],
+      "joint2": [
+        490.0,
+        5.0
+      ],
+      "joint3": [
+        490.0,
+        5.0
+      ],
+      "joint4": [
+        400.0,
+        3.0
+      ],
+      "joint5": [
+        20,
+        0.5
+      ],
+      "joint6": [
+        20,
+        0.4
+      ],
+      "gripper": [
+        20,
+        0.4
+      ]
+    }
   },
   "teleop": {
     "type": "rebot_102_leader",
-    "port": "/dev/ttyUSB0",
+    "port": "/dev/star_right",
     "id": "star_metal",
-    "joint_ids": {"joint1": 0, "joint2": 1, "joint3": 2, "joint4": 3, "joint5": 4, "joint6": 5, "gripper": 6},
-    "joint_directions": {"joint1": -1, "joint2": -1, "joint3": -0.667, "joint4": -1, "joint5": 1, "joint6": -1, "gripper": 1.895},
-    "joint_ranges": {"joint1": [-160, 160], "joint2": [-180, 0], "joint3": [0, 180], "joint4": [-123, 81], "joint5": [-85, 85], "joint6": [-145, 145], "gripper": [-5, 115]}
+    "joint_ids": {
+      "joint1": 0,
+      "joint2": 1,
+      "joint3": 2,
+      "joint4": 3,
+      "joint5": 4,
+      "joint6": 5,
+      "gripper": 6
+    },
+    "joint_directions": {
+      "joint1": -1,
+      "joint2": -1,
+      "joint3": -0.667,
+      "joint4": -1,
+      "joint5": 1,
+      "joint6": -1,
+      "gripper": 1.895
+    },
+    "joint_ranges": {
+      "joint1": [
+        -160,
+        160
+      ],
+      "joint2": [
+        -180,
+        0
+      ],
+      "joint3": [
+        0,
+        180
+      ],
+      "joint4": [
+        -123,
+        81
+      ],
+      "joint5": [
+        -85,
+        85
+      ],
+      "joint6": [
+        -145,
+        145
+      ],
+      "gripper": [
+        -5,
+        115
+      ]
+    }
   }
 }

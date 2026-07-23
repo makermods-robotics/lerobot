@@ -71,6 +71,10 @@ class MotorState(TypedDict):
     torque: float
     temp_mos: float
     temp_rotor: float
+    # High nibble of state-frame byte 0: Damiao error/status code (0 = disabled, 1 = enabled,
+    # 8 = overvoltage, 9 = undervoltage, 0xA = overcurrent, 0xB = MOS overtemp,
+    # 0xC = coil overtemp, 0xD = comm loss, 0xE = overload).
+    status: int
 
 
 class DamiaoMotorsBus(MotorsBusBase):
@@ -143,6 +147,7 @@ class DamiaoMotorsBus(MotorsBusBase):
                 "torque": 0.0,
                 "temp_mos": 0.0,
                 "temp_rotor": 0.0,
+                "status": 0,
             }
             for name in self.motors
         }
@@ -579,6 +584,7 @@ class DamiaoMotorsBus(MotorsBusBase):
                 "torque": torque,
                 "temp_mos": float(t_mos),
                 "temp_rotor": float(t_rotor),
+                "status": (msg.data[0] >> 4) & 0x0F,
             }
         except Exception as e:
             logger.warning(f"Failed to decode response from {motor}: {e}")
@@ -743,6 +749,17 @@ class DamiaoMotorsBus(MotorsBusBase):
             # Fall back to individual writes
             for motor, value in values.items():
                 self.write(data_name, motor, value)
+
+    def get_cached_states(self, motors: str | list[str] | None = None) -> dict[str, MotorState]:
+        """Last known state per motor, as updated by every response frame (MIT writes and
+        refreshes alike). Never touches the bus — use when a recent state is enough and an
+        extra refresh round-trip per tick is not worth it (e.g. feedforward models)."""
+        return {motor: self._last_known_states[motor].copy() for motor in self._get_motors_list(motors)}
+
+    def get_gains(self, motor: str) -> tuple[float, float]:
+        """Current (kp, kd) used for MIT position writes, as set via sync_write("Kp"/"Kd")."""
+        gains = self._gains[motor]
+        return gains["kp"], gains["kd"]
 
     def sync_write_mit(self, commands: dict) -> None:
         """Public MIT batch write. commands: name -> (kp, kd, pos_deg, vel_deg_s, torque_nm).
